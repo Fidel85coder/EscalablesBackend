@@ -10,6 +10,15 @@ const getRouteParam = (value: string | string[] | undefined): string =>
 const getErrorMessage = (error: unknown): string =>
     error instanceof Error ? error.message : 'Error interno del servidor';
 
+const getPositiveInteger = (value: unknown, fallback: number, max: number): number => {
+    if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+        return fallback;
+    }
+
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? Math.min(parsed, max) : fallback;
+};
+
 const collectCommentTreeIds = async (rootId: string): Promise<string[]> => {
     const ids = new Set([rootId]);
     let parents = [rootId];
@@ -41,15 +50,60 @@ export const getCommentsByPost = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'ID de publicación inválido' });
         }
 
-        const comments = await Comment.find({ postId })
-            .populate('usuarioId', 'username email rol')
-            .sort({ fechaCreacion: 1 })
-            .lean();
+        const page = getPositiveInteger(req.query['page'], 1, Number.MAX_SAFE_INTEGER);
+        const limit = getPositiveInteger(req.query['limit'], 20, 100);
+        const rootFilter = { postId, comentarioPadreId: null };
+        const [totalRoots, roots] = await Promise.all([
+            Comment.countDocuments(rootFilter),
+            Comment.find(rootFilter)
+                .sort({ fechaCreacion: 1 })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .lean()
+        ]);
 
-        res.json(comments.map(comment => ({
-            ...comment,
-            comentarioPadreId: comment.comentarioPadreId?.toString() ?? null
-        })));
+        const comments = [...roots];
+        const visitedIds = new Set(roots.map(comment => comment._id.toString()));
+        let parentIds = [...visitedIds];
+
+        while (parentIds.length > 0) {
+            const descendants = await Comment.find({
+                postId,
+                comentarioPadreId: { $in: parentIds }
+            }).lean();
+            const nextParentIds: string[] = [];
+
+            for (const descendant of descendants) {
+                const id = descendant._id.toString();
+                if (!visitedIds.has(id)) {
+                    visitedIds.add(id);
+                    comments.push(descendant);
+                    nextParentIds.push(id);
+                }
+            }
+
+            parentIds = nextParentIds;
+        }
+
+        const populatedComments = await Comment.populate(comments, {
+            path: 'usuarioId',
+            select: 'username email rol'
+        });
+        populatedComments.sort((a, b) =>
+            new Date(a.fechaCreacion ?? 0).getTime() - new Date(b.fechaCreacion ?? 0).getTime()
+        );
+
+        const totalPages = Math.ceil(totalRoots / limit);
+        res.json({
+            comments: populatedComments.map(comment => ({
+                ...comment,
+                comentarioPadreId: comment.comentarioPadreId?.toString() ?? null
+            })),
+            totalRoots,
+            page,
+            totalPages,
+            hasMore: page < totalPages
+        });
     } catch (error: unknown) {
         res.status(500).json({ message: getErrorMessage(error) });
     }
