@@ -5,6 +5,7 @@ import authRoutes from '../routes/auth.routes';
 import communityRoutes from '../routes/community.routes';
 import postRoutes from '../routes/posts.routes';
 import commentRoutes from '../routes/comment.routes';
+import adminRoutes from '../routes/admin.routes';
 import { dbConnection } from '../database/config';
 
 export class Server {
@@ -15,7 +16,8 @@ export class Server {
         auth: '/api/auth',
         communities: '/api/communities',
         posts: '/api/posts',
-        comments: '/api/comments'
+        comments: '/api/comments',
+        admin: '/api/admin'
     };
 
     constructor() {
@@ -36,6 +38,7 @@ export class Server {
         this.app.use(this.apiPaths.communities, communityRoutes);
         this.app.use(this.apiPaths.posts, postRoutes);
         this.app.use(this.apiPaths.comments, commentRoutes);
+        this.app.use(this.apiPaths.admin, adminRoutes);
     }
 
     public async listen(): Promise<void> {
