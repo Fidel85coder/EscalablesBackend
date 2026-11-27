@@ -2,13 +2,20 @@ import { Request, Response } from 'express';
 import { Community } from '../models/Community';
 import { AuthRequest } from '../middleware/auth';
 
+const escapeRegex = (value: string): string =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export const getCommunities = async (req: Request, res: Response) => {
     try {
-        const { search } = req.query;
-        const filter: Record<string, any> = {};
+        const search = req.query['search'];
+        const filter: Record<string, unknown> = {};
 
         if (typeof search === 'string' && search.trim() !== '') {
-            filter['nombre'] = { $regex: search.trim(), $options: 'i' };
+            const escapedSearch = escapeRegex(search.trim());
+            filter['$or'] = [
+                { nombre: { $regex: escapedSearch, $options: 'i' } },
+                { descripcion: { $regex: escapedSearch, $options: 'i' } }
+            ];
         }
 
         const communities = await Community.find(filter)

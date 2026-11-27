@@ -78,7 +78,7 @@ export const updateUserRole = async (req: AuthRequest, res: Response) => {
         const user = await User.findByIdAndUpdate(
             targetId,
             { rol },
-            { new: true, runValidators: true }
+            { returnDocument: 'after', runValidators: true }
         ).select('-password');
 
         if (!user) {

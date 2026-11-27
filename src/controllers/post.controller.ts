@@ -12,6 +12,9 @@ type PostSort = 'hot' | 'new' | 'top';
 const getQueryString = (value: unknown): string | undefined =>
     typeof value === 'string' ? value : undefined;
 
+const escapeRegex = (value: string): string =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const getPositiveInteger = (value: unknown, fallback: number, max: number): number => {
     if (typeof value !== 'string' || !/^\d+$/.test(value)) {
         return fallback;
@@ -59,12 +62,25 @@ export const getPosts = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'ID de comunidad inválido' });
         }
         const communityId = getQueryString(rawCommunityId);
-        const filter: { comunidadId?: Types.ObjectId } = {};
+        const filter: Record<string, unknown> = {};
         if (communityId) {
             if (!Types.ObjectId.isValid(communityId)) {
                 return res.status(400).json({ message: 'ID de comunidad inválido' });
             }
-            filter.comunidadId = new Types.ObjectId(communityId);
+            filter['comunidadId'] = new Types.ObjectId(communityId);
+        }
+
+        const rawSearch = req.query['search'];
+        if (rawSearch !== undefined && typeof rawSearch !== 'string') {
+            return res.status(400).json({ message: 'Término de búsqueda inválido' });
+        }
+        const search = getQueryString(rawSearch)?.trim();
+        if (search) {
+            const escapedSearch = escapeRegex(search);
+            filter['$or'] = [
+                { titulo: { $regex: escapedSearch, $options: 'i' } },
+                { contenido: { $regex: escapedSearch, $options: 'i' } }
+            ];
         }
 
         const page = getPositiveInteger(req.query['page'], 1, Number.MAX_SAFE_INTEGER);
